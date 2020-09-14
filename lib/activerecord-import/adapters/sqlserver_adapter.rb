@@ -5,7 +5,7 @@ module ActiveRecord::Import::SQLServerAdapter
     false
   end
 
-  def insert_many( sql, values, options = {}, *args )
+  def insert_many( sql, values, options = {}, name = 'Import', *args )
     base_sql, post_sql = if sql.is_a?( String )
       [sql, '']
     elsif sql.is_a?( Array )
@@ -22,7 +22,11 @@ module ActiveRecord::Import::SQLServerAdapter
 
     max = max_allowed_packet
 
+    table_name = get_table_name(base_sql)
+    id_column = primary_key(table_name)
+
     number_of_inserts = 0
+    results = []
     while !(batch = values.shift(max)).blank? do
       if sql_id_index
         null_ids     = []
@@ -41,21 +45,21 @@ module ActiveRecord::Import::SQLServerAdapter
         unless null_ids.empty?
           number_of_inserts += 1
           sql2insert = sql_noid + null_ids.join( ',' ) + post_sql
-          insert( sql2insert, *args )
+          results.push(*exec_insert( sql2insert, args.first, [], id_column ).rows.flatten)
         end
         unless supplied_ids.empty?
           number_of_inserts += 1
           sql2insert = base_sql + supplied_ids.join( ',' ) + post_sql
-          insert( sql2insert, *args )
+          results.push(*exec_insert( sql2insert, args.first, [], id_column ).rows.flatten)
         end
       else
         number_of_inserts += 1
         sql2insert = base_sql + batch.join( ',' ) + post_sql
-        insert( sql2insert, *args )
+        results.push(*exec_insert( sql2insert, args.first, [], id_column ).rows.flatten)
       end
     end
 
-    ActiveRecord::Import::Result.new([], number_of_inserts, [], [])
+    ActiveRecord::Import::Result.new([], number_of_inserts, results, [])
   end
 
   def max_allowed_packet
